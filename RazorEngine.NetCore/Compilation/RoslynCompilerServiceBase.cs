@@ -2,17 +2,14 @@
 using RazorEngine.Compilation.ReferenceResolver;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 #if RAZOR4
-using Microsoft.AspNetCore.Razor;
 #else
 using System.Web.Razor.Parser;
 using System.Web.Razor;
 #endif
-using Microsoft.CodeAnalysis.Text;
 using System.IO;
 using System.Reflection;
 using System.Security;
@@ -238,22 +235,28 @@ namespace RazorEngine.Roslyn.CSharp
                 {
                     opts = opts.WithDebugInformationFormat(DebugInformationFormat.PortablePdb);
                 }
+                EmitResult result = null;
 
-                var result = compilation.Emit(assemblyStream, pdbStreamHelper, options: opts);
+                if (Debugger.IsAttached) {
+                    result = compilation.Emit(assemblyStream, pdbStreamHelper, options: opts);
+                } else {
+                    result = compilation.Emit(assemblyStream);
+                }
+                //var result = compilation.Emit(assemblyStream, pdbStreamHelper, options: opts);
+                //var result = compilation.Emit(assemblyStream);
                 if (!result.Success)
                 {
                     var errors =
-                        result.Diagnostics.Select(diag =>
-                        {
-                            var lineSpan = diag.Location.GetLineSpan();
-                            return new Templating.RazorEngineCompilerError(
-                                string.Format("{0}", diag.GetMessage()),
-                                lineSpan.Path,
-                                lineSpan.StartLinePosition.Line,
-                                lineSpan.StartLinePosition.Character,
-                                diag.Id,
-                                diag.Severity != DiagnosticSeverity.Error);
-                        });
+                            result.Diagnostics.Select(diag => {
+                                                          var lineSpan = diag.Location.GetLineSpan();
+                                                          return new Templating.RazorEngineCompilerError(
+                                                                                                         string.Format("{0}", diag.GetMessage()),
+                                                                                                         lineSpan.Path,
+                                                                                                         lineSpan.StartLinePosition.Line,
+                                                                                                         lineSpan.StartLinePosition.Character,
+                                                                                                         diag.Id,
+                                                                                                         diag.Severity != DiagnosticSeverity.Error);
+                                                      });
 
                     throw new Templating.TemplateCompilationException(errors, compilationData, context.TemplateContent);
                 }
