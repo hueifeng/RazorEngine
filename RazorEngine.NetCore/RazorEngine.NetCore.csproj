@@ -66,8 +66,4 @@
     <Compile Remove="Legacy\**\*.cs" />
     <Compile Remove="Templating\WrapperTemplateManager.cs" />
   </ItemGroup>
-
-  <!--<ItemGroup>
-    <ProjectReference Include="..\Razor.Language\src\Microsoft.AspNetCore.Razor.Language.csproj" />
-  </ItemGroup>-->
-</Project>
+	</Project>
