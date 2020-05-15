@@ -20,6 +20,9 @@
     using Templating;
     using RazorEngine.Compilation.ReferenceResolver;
     using System.Security;
+    using RazorEngine.Compilation.ImpromptuInterface.Optimization;
+    using Microsoft.AspNetCore.Razor.Language.CodeGeneration;
+    using Microsoft.AspNetCore.Razor.Language.Intermediate;
 
     /// <summary>
     /// Provides a base implementation of a compiler service.
@@ -293,7 +296,7 @@
 @using System.Threading.Tasks
 ";
             importString += String.Join("\r\n", namespaces.Select(n => "@using " + n.Trim())) + "\r\n";
-
+            var result = new RazorPageGeneratorResult();
             using (var reader = context.TemplateContent.GetTemplateReader())
             {
                 string path = null;
@@ -306,57 +309,27 @@
                     path = Path.GetDirectoryName(context.TemplateContent.TemplateFile);
                 }
                 var razorProject = RazorProjectFileSystem.Create(path);
-                var templateEngine = new RazorTemplateEngine(razorEngine, razorProject);
-                templateEngine.Options.DefaultImports = RazorSourceDocument.Create(importString, fileName: null);
-                RazorPageGeneratorResult result;
                 if (string.IsNullOrWhiteSpace(context.TemplateContent.TemplateFile))
                 {
-                    var item = RazorSourceDocument.Create(context.TemplateContent.Template, string.Empty);
-                    var imports = new List<RazorSourceDocument>();
-                    imports.Add(templateEngine.Options.DefaultImports);
-                    var doc = RazorCodeDocument.Create(item, imports);
-                    result = GenerateCodeFile(templateEngine, doc);
+                    var razorSource = RazorSourceDocument.Create(context.TemplateContent.Template, string.Empty);
+                    var codeDocument = RazorCodeDocument.Create(razorSource);
+                    razorEngine.Process(codeDocument);
+
+                    var cSharpDocument = codeDocument.GetCSharpDocument();
+                    var generatedCode = cSharpDocument.GeneratedCode;
+                    var projectItem = razorProject.EnumerateItems(path);
+                    result = GenerateCodeFile(generatedCode,projectItem.FirstOrDefault());
                 }
-                else
-                {
-                    var item = razorProject.GetItem(context.TemplateContent.TemplateFile);
-                    result = GenerateCodeFile(templateEngine, item);
-                }
+
                 return InspectSource(result, context);
             }
         }
-
-
-        private static RazorPageGeneratorResult GenerateCodeFile(RazorTemplateEngine templateEngine, RazorProjectItem projectItem)
+        private static RazorPageGeneratorResult GenerateCodeFile(string generatedCode, RazorProjectItem razorProjectItem)
         {
-            var projectItemWrapper = new FileSystemRazorProjectItemWrapper(projectItem);
-            var cSharpDocument = templateEngine.GenerateCode(projectItemWrapper);
-            if (cSharpDocument.Diagnostics.Any())
-            {
-                var diagnostics = string.Join(Environment.NewLine, cSharpDocument.Diagnostics);
-                Console.WriteLine($"One or more parse errors encountered. This will not prevent the generator from continuing: {Environment.NewLine}{diagnostics}.");
-            }
-
-            var generatedCodeFilePath = Path.ChangeExtension(projectItem.PhysicalPath, ".Designer.cs");
             return new RazorPageGeneratorResult
             {
-                FilePath = generatedCodeFilePath,
-                GeneratedCode = cSharpDocument.GeneratedCode,
-            };
-        }
-        private static RazorPageGeneratorResult GenerateCodeFile(RazorTemplateEngine templateEngine, RazorCodeDocument document)
-        {
-            var cSharpDocument = templateEngine.GenerateCode(document);
-            if (cSharpDocument.Diagnostics.Any())
-            {
-                var diagnostics = string.Join(Environment.NewLine, cSharpDocument.Diagnostics);
-                Console.WriteLine($"One or more parse errors encountered. This will not prevent the generator from continuing: {Environment.NewLine}{diagnostics}.");
-            }
-
-            return new RazorPageGeneratorResult
-            {
-                FilePath = null,
-                GeneratedCode = cSharpDocument.GeneratedCode,
+                FilePath = Path.ChangeExtension(razorProjectItem.PhysicalPath, ".Designer.cs"),
+                GeneratedCode = generatedCode,
             };
         }
 
