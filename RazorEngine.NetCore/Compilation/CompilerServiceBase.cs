@@ -21,8 +21,10 @@
     using RazorEngine.Compilation.ReferenceResolver;
     using System.Security;
     using RazorEngine.Compilation.ImpromptuInterface.Optimization;
+#if NETSTANDARD2_1
     using Microsoft.AspNetCore.Razor.Language.CodeGeneration;
     using Microsoft.AspNetCore.Razor.Language.Intermediate;
+#endif
 
     /// <summary>
     /// Provides a base implementation of a compiler service.
@@ -38,7 +40,7 @@
         /// </summary>
         protected internal const string ClassNamePrefix = "RazorEngine_";
 
-        #region Constructor
+#region Constructor
         /// <summary>
         /// Initialises a new instance of <see cref="CompilerServiceBase"/>
         /// </summary>
@@ -49,9 +51,9 @@
         {
             ReferenceResolver = new UseCurrentAssembliesReferenceResolver();
         }
-        #endregion
+#endregion
 
-        #region Properties
+#region Properties
 #if !RAZOR4
         /// <summary>
         /// Gets or sets the set of code inspectors.
@@ -83,9 +85,9 @@
 
         private bool _disposed;
 
-        #endregion
+#endregion
 
-        #region Methods
+#region Methods
 
         /// <summary>
         /// Tries to create and return a unique temporary directory.
@@ -261,7 +263,7 @@
             // Gets the generator result.
             return GetGeneratorResult(GetNamespaces(templateType, namespaceImports), context);
         }
-
+#if NETSTANDARD2_1
         /// <summary>
         /// Gets the generator result.
         /// </summary>
@@ -332,7 +334,114 @@
                 GeneratedCode = generatedCode,
             };
         }
+#else
 
+        /// <summary>
+        /// Gets the generator result.
+        /// </summary>
+        /// <param name="host">The razor engine host.</param>
+        /// <param name="context">The compile context.</param>
+        /// <returns>The generator result.</returns>
+        [SecurityCritical]
+        private string GetGeneratorResult(IEnumerable<string> namespaces, TypeContext context)
+        {
+#pragma warning disable 612, 618
+            var razorEngine = RazorEngine.Create(builder =>
+            {
+                builder
+                    .SetNamespace(DynamicTemplateNamespace)
+                    //.SetBaseType("Microsoft.Extensions.RazorViews.BaseView")
+                    .SetBaseType(BuildTypeName(context.TemplateType, context.ModelType))
+                    .ConfigureClass((document, @class) =>
+                    {
+                        @class.ClassName = context.ClassName;
+                        //if (!str  ing.IsNullOrWhiteSpace(document.Source.FilePath))
+                        //{
+                        //    @class.ClassName = Path.GetFileNameWithoutExtension(document.Source.FilePath);
+                        //}
+                        @class.Modifiers.Clear();
+                        @class.Modifiers.Add("internal");
+                    });
+                builder.Features.Add(new SuppressChecksumOptionsFeature());
+            });
+
+            string importString = @"
+@using System
+@using System.Threading.Tasks
+";
+            importString += String.Join("\r\n", namespaces.Select(n => "@using " + n.Trim())) + "\r\n";
+
+            using (var reader = context.TemplateContent.GetTemplateReader())
+            {
+                string path = null;
+                if (string.IsNullOrWhiteSpace(context.TemplateContent.TemplateFile))
+                {
+                    path = Directory.GetCurrentDirectory();
+                }
+                else
+                {
+                    path = Path.GetDirectoryName(context.TemplateContent.TemplateFile);
+                }
+                var razorProject = RazorProjectFileSystem.Create(path);
+                var templateEngine = new RazorTemplateEngine(razorEngine, razorProject);
+                templateEngine.Options.DefaultImports = RazorSourceDocument.Create(importString, fileName: null);
+                RazorPageGeneratorResult result;
+                if (string.IsNullOrWhiteSpace(context.TemplateContent.TemplateFile))
+                {
+                    var item = RazorSourceDocument.Create(context.TemplateContent.Template, string.Empty);
+                    var imports = new List<RazorSourceDocument>();
+                    imports.Add(templateEngine.Options.DefaultImports);
+                    var doc = RazorCodeDocument.Create(item, imports);
+                    result = GenerateCodeFile(templateEngine, doc);
+                }
+                else
+                {
+                    var item = razorProject.GetItem(context.TemplateContent.TemplateFile);
+                    result = GenerateCodeFile(templateEngine, item);
+                }
+
+                return InspectSource(result, context);
+            }
+        }
+
+        private static RazorPageGeneratorResult GenerateCodeFile(RazorTemplateEngine templateEngine,
+            RazorProjectItem projectItem)
+        {
+            var projectItemWrapper = new FileSystemRazorProjectItemWrapper(projectItem);
+            var cSharpDocument = templateEngine.GenerateCode(projectItemWrapper);
+            if (cSharpDocument.Diagnostics.Any())
+            {
+                var diagnostics = string.Join(Environment.NewLine, cSharpDocument.Diagnostics);
+                Console.WriteLine(
+                    $"One or more parse errors encountered. This will not prevent the generator from continuing: {Environment.NewLine}{diagnostics}.");
+            }
+            var generatedCodeFilePath = Path.ChangeExtension(projectItem.PhysicalPath, ".Designer.cs");
+            return new RazorPageGeneratorResult
+            {
+                FilePath = generatedCodeFilePath,
+                GeneratedCode = cSharpDocument.GeneratedCode,
+            };
+        }
+
+        private static RazorPageGeneratorResult GenerateCodeFile(RazorTemplateEngine templateEngine,
+            RazorCodeDocument document)
+        {
+
+            var cSharpDocument = templateEngine.GenerateCode(document);
+            if (cSharpDocument.Diagnostics.Any())
+            {
+                var diagnostics = string.Join(Environment.NewLine, cSharpDocument.Diagnostics);
+                Console.WriteLine($"One or more parse errors encountered. This will not prevent the generator from continuing: {Environment.NewLine}{diagnostics}.");
+            }
+
+            return new RazorPageGeneratorResult
+            {
+                FilePath = null,
+                GeneratedCode = cSharpDocument.GeneratedCode,
+            };
+        }
+
+#endif
         /// <summary>
         /// Gets any required namespace imports.
         /// </summary>
@@ -431,7 +540,7 @@
             _disposed = true;
         }
 
-        #endregion
+#endregion
 
         //https://github.com/aspnet/Razor/blob/b70815e317298c3078fff7ed6e21fa9b5738949f/src/RazorPageGenerator/Program.cs
         private class SuppressChecksumOptionsFeature : RazorEngineFeatureBase, IConfigureRazorCodeGenerationOptionsFeature
