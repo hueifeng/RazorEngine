@@ -223,25 +223,30 @@ namespace RazorEngine.Roslyn.CSharp
 
             var assemblyPdbFile = Path.Combine(tempDir, String.Format("{0}.pdb", assemblyName));
             var compilationData = new CompilationData(sourceCode, tempDir);
-
+            
             using (var assemblyStream = File.Open(assemblyFile, FileMode.Create, FileAccess.ReadWrite))
             using (var pdbStream = File.Open(assemblyPdbFile, FileMode.Create, FileAccess.ReadWrite))
             {
                 var opts = new EmitOptions()
-                    .WithPdbFilePath(assemblyPdbFile);
+                    .WithPdbFilePath(assemblyPdbFile)
+                    .WithDebugInformationFormat(DebugInformationFormat.PortablePdb);
+             
                 var pdbStreamHelper = pdbStream;
 
                 if (IsMono())
                 {
                     opts = opts.WithDebugInformationFormat(DebugInformationFormat.PortablePdb);
                 }
-                EmitResult result = null;
+                //EmitResult result = null;
 
-                if (Debugger.IsAttached) {
-                    result = compilation.Emit(assemblyStream, pdbStreamHelper, options: opts);
-                } else {
-                    result = compilation.Emit(assemblyStream);
-                }
+                //if (Debugger.IsAttached) {
+                //    result = compilation.Emit(assemblyStream, pdbStreamHelper, options: opts);
+                //} else {
+                //    result = compilation.Emit(assemblyStream);
+                //}
+                var result = Debugger.IsAttached
+                    ? compilation.Emit(assemblyStream, pdbStreamHelper, options: opts)
+                    : compilation.Emit(assemblyStream);
                 //var result = compilation.Emit(assemblyStream, pdbStreamHelper, options: opts);
                 //var result = compilation.Emit(assemblyStream);
                 if (!result.Success)

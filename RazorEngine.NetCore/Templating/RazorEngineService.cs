@@ -252,7 +252,7 @@ namespace RazorEngine.Templating
         /// <param name="viewBag"></param>
         public void RunCompile(ITemplateKey key, System.IO.TextWriter writer, Type modelType = null, object model = null, DynamicViewBag viewBag = null)
         {
-            var template = GetCompiledTemplate(key, modelType, true);
+            GetCompiledTemplate(key, modelType, true);
 
             Run(key, writer, modelType, model, viewBag);
         }

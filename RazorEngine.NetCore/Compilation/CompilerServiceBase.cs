@@ -330,7 +330,7 @@
         {
             return new RazorPageGeneratorResult
             {
-                FilePath = Path.ChangeExtension(razorProjectItem.PhysicalPath, ".Designer.cs"),
+                FilePath = Path.ChangeExtension(razorProjectItem?.PhysicalPath, ".Designer.cs"),
                 GeneratedCode = generatedCode,
             };
         }
